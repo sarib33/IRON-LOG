@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1" />
+<meta name="theme-color" content="#09090b" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<title>IRONLOG — Workout Tracker</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          bg: '#09090b',
+          surface: '#131316',
+          surface2: '#1b1b1f',
+          line: '#232327',
+          ink: '#f4f4f5',
+          dim: '#8b8b93',
+          faint: '#56565c',
+          brass: '#d9a441',
+          danger: '#e5484d',
+          ok: '#4ade80',
+        },
+        fontFamily: {
+          display: ['"Space Grotesk"', 'sans-serif'],
+          body: ['Inter', 'sans-serif'],
+        },
+      },
+    },
+  };
+</script>
+
+<style>
+  html, body { background: #09090b; }
+  body { font-family: 'Inter', sans-serif; }
+  .font-display { font-family: 'Space Grotesk', sans-serif; }
+  .tabular-nums { font-variant-numeric: tabular-nums; }
+
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type=number] { -moz-appearance: textfield; }
+
+  select { background-image: none; }
+
+  #history-list::-webkit-scrollbar { width: 5px; }
+  #history-list::-webkit-scrollbar-track { background: transparent; }
+  #history-list::-webkit-scrollbar-thumb { background: #232327; border-radius: 3px; }
+
+  #main-scroll::-webkit-scrollbar { width: 0px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+
+<body class="bg-bg text-ink antialiased min-h-screen">
+
+  <div class="mx-auto max-w-md min-h-screen flex flex-col relative border-x border-line/60">
+
+    <!-- Header -->
+    <header class="px-5 pt-6 pb-3 flex items-center justify-between shrink-0">
+      <div>
+        <h1 class="font-display text-xl font-bold tracking-tight">IRONLOG</h1>
+        <p id="today-date" class="text-xs text-dim mt-0.5"></p>
+      </div>
+      <span id="conn-dot" class="h-2.5 w-2.5 rounded-full bg-faint shrink-0" title="Supabase connection status"></span>
+    </header>
+
+    <!-- Config banner -->
+    <div id="config-banner" class="hidden mx-5 mb-3 rounded-xl border border-brass/30 bg-brass/10 px-4 py-3 text-xs text-brass leading-relaxed shrink-0">
+      Not connected to Supabase. Set <code class="font-mono">SUPABASE_URL</code> and <code class="font-mono">SUPABASE_ANON_KEY</code> near the top of the script to start logging sets.
+    </div>
+
+    <!-- Main scrollable content -->
+    <main id="main-scroll" class="flex-1 overflow-y-auto px-5 pb-28 space-y-6">
+
+      <!-- ============ LOGGER PANEL ============ -->
+      <section id="logger-panel" class="tab-panel space-y-6">
+
+        <!-- Exercise picker -->
+        <div class="space-y-3">
+          <div>
+            <label for="muscle-group-select" class="block text-sm text-dim mb-2">Muscle group</label>
+            <div class="relative">
+              <select id="muscle-group-select" class="w-full appearance-none bg-surface border border-line rounded-2xl px-4 py-4 text-base font-medium focus:outline-none focus:ring-2 focus:ring-brass"></select>
+              <svg class="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-dim" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+            </div>
+          </div>
+          <div>
+            <label for="exercise-select" class="block text-sm text-dim mb-2">Exercise</label>
+            <div class="relative">
+              <select id="exercise-select" class="w-full appearance-none bg-surface border border-line rounded-2xl px-4 py-4 text-base font-medium focus:outline-none focus:ring-2 focus:ring-brass"></select>
+              <svg class="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-dim" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+            </div>
+            <input id="custom-exercise-input" type="text" placeholder="Exercise name" autocomplete="off"
+              class="hidden w-full bg-surface border border-line rounded-2xl px-4 py-4 text-base focus:outline-none focus:ring-2 focus:ring-brass" />
+          </div>
+        </div>
+
+        <!-- Weight + Reps + Log -->
+        <div class="bg-surface border border-line rounded-2xl p-5 space-y-5">
+          <div class="flex items-center justify-between">
+            <span class="text-sm text-dim">Set <span id="set-number-display" class="text-ink font-display font-semibold">1</span></span>
+            <span id="prev-max-badge" class="hidden text-xs font-medium text-brass bg-brass/10 border border-brass/30 rounded-full px-2.5 py-1"></span>
+          </div>
+
+          <div>
+            <span class="block text-sm text-dim mb-2">Weight (kg)</span>
+            <div class="flex items-center gap-2">
+              <button data-adj="weight" data-amt="-5" class="adj-btn bg-surface2 border border-line rounded-xl text-sm font-semibold py-3 min-w-[46px] text-dim active:scale-95 transition">−5</button>
+              <button data-adj="weight" data-amt="-2.5" class="adj-btn bg-surface2 border border-line rounded-xl text-sm font-semibold py-3 min-w-[46px] text-dim active:scale-95 transition">−2.5</button>
+              <input id="weight-input" type="number" inputmode="decimal" step="0.5" min="0" value="20"
+                class="flex-1 text-center bg-surface2 border border-line rounded-xl py-3 font-display text-2xl tabular-nums focus:outline-none focus:ring-2 focus:ring-brass" />
+              <button data-adj="weight" data-amt="2.5" class="adj-btn bg-surface2 border border-line rounded-xl text-sm font-semibold py-3 min-w-[46px] text-dim active:scale-95 transition">+2.5</button>
+              <button data-adj="weight" data-amt="5" class="adj-btn bg-surface2 border border-line rounded-xl text-sm font-semibold py-3 min-w-[46px] text-dim active:scale-95 transition">+5</button>
+            </div>
+          </div>
+
+          <div>
+            <span class="block text-sm text-dim mb-2">Reps</span>
+            <div class="flex items-center gap-2">
+              <button data-adj="reps" data-amt="-1" class="adj-btn bg-surface2 border border-line rounded-xl text-sm font-semibold py-3 min-w-[46px] text-dim active:scale-95 transition">−1</button>
+              <input id="reps-input" type="number" inputmode="numeric" step="1" min="0" value="8"
+                class="flex-1 text-center bg-surface2 border border-line rounded-xl py-3 font-display text-2xl tabular-nums focus:outline-none focus:ring-2 focus:ring-brass" />
+              <button data-adj="reps" data-amt="1" class="adj-btn bg-surface2 border border-line rounded-xl text-sm font-semibold py-3 min-w-[46px] text-dim active:scale-95 transition">+1</button>
+            </div>
+          </div>
+
+          <button id="log-set-btn" class="w-full bg-brass text-bg font-display font-bold text-lg py-4 rounded-2xl active:scale-[0.98] transition disabled:opacity-40 disabled:pointer-events-none">
+            Log Set
+          </button>
+        </div>
+
+        <!-- Previous set -->
+        <div>
+          <h2 class="text-sm text-dim mb-2">Previous set</h2>
+          <div id="recent-set-card" class="border border-line rounded-2xl px-4 py-4 text-sm text-faint">
+            Loading…
+          </div>
+        </div>
+
+        <!-- Rest timer -->
+        <div class="border border-line rounded-2xl p-5 flex flex-col items-center gap-4">
+          <h2 class="text-sm text-dim self-start">Rest timer</h2>
+          <div class="relative h-40 w-40">
+            <svg viewBox="0 0 120 120" class="h-40 w-40 -rotate-90">
+              <circle cx="60" cy="60" r="54" fill="none" stroke="#232327" stroke-width="8" />
+              <circle id="timer-ring" cx="60" cy="60" r="54" fill="none" stroke="#d9a441" stroke-width="8"
+                stroke-linecap="round" stroke-dasharray="339.3" stroke-dashoffset="0"
+                style="transition: stroke-dashoffset 1s linear" />
+            </svg>
+            <div class="absolute inset-0 flex items-center justify-center">
+              <span id="timer-display" class="font-display text-3xl tabular-nums transition-colors">01:30</span>
+            </div>
+          </div>
+          <div class="flex gap-3 w-full">
+            <button id="timer-start" class="flex-1 bg-surface2 border border-line rounded-xl py-3 font-medium active:scale-95 transition">Start</button>
+            <button id="timer-pause" class="flex-1 bg-surface2 border border-line rounded-xl py-3 font-medium active:scale-95 transition">Pause</button>
+            <button id="timer-reset" class="flex-1 bg-surface2 border border-line rounded-xl py-3 font-medium active:scale-95 transition">Reset</button>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ============ ANALYTICS PANEL ============ -->
+      <section id="analytics-panel" class="tab-panel hidden space-y-6">
+
+        <div class="space-y-3">
+          <div>
+            <label for="analytics-muscle-group-select" class="block text-sm text-dim mb-2">Muscle group</label>
+            <div class="relative">
+              <select id="analytics-muscle-group-select" class="w-full appearance-none bg-surface border border-line rounded-2xl px-4 py-4 text-base font-medium focus:outline-none focus:ring-2 focus:ring-brass"></select>
+              <svg class="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-dim" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+            </div>
+          </div>
+          <div>
+            <label for="analytics-exercise-select" class="block text-sm text-dim mb-2">Exercise</label>
+            <div class="relative">
+              <select id="analytics-exercise-select" class="w-full appearance-none bg-surface border border-line rounded-2xl px-4 py-4 text-base font-medium focus:outline-none focus:ring-2 focus:ring-brass"></select>
+              <svg class="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-dim" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="border border-line rounded-2xl p-4">
+          <h2 class="text-sm text-dim mb-3">Max weight per session</h2>
+          <div class="h-56 relative">
+            <canvas id="progress-chart"></canvas>
+            <p id="chart-empty-state" class="hidden absolute inset-0 flex items-center justify-center text-sm text-faint">No data yet</p>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="text-sm text-dim">History</h2>
+            <button id="refresh-history-btn" class="text-xs font-medium text-brass active:opacity-60 transition">Refresh</button>
+          </div>
+          <div id="history-list" class="max-h-96 overflow-y-auto divide-y divide-line border border-line rounded-2xl">
+            <p class="p-4 text-sm text-faint">Loading…</p>
+          </div>
+        </div>
+
+      </section>
+
+    </main>
+
+    <!-- Bottom tab bar -->
+    <nav class="fixed bottom-0 inset-x-0 z-20">
+      <div class="mx-auto max-w-md bg-surface/95 backdrop-blur border-t border-line flex" style="padding-bottom: env(safe-area-inset-bottom)">
+        <button data-tab="logger-panel" class="tab-btn flex-1 flex flex-col items-center gap-1 py-3 text-brass transition-colors">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 12h2M20 12h2M6 8v8M18 8v8M6 12H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h2M18 12h2a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1h-2M6 12h12" />
+          </svg>
+          <span class="text-xs font-medium">Logger</span>
+        </button>
+        <button data-tab="analytics-panel" class="tab-btn flex-1 flex flex-col items-center gap-1 py-3 text-faint transition-colors">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 3v18h18" /><path d="M18 9l-5 5-3-3-4 4" />
+          </svg>
+          <span class="text-xs font-medium">Analytics</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- Toast -->
+    <div id="toast" role="status" aria-live="polite"
+      class="fixed left-1/2 -translate-x-1/2 bottom-24 z-30 transition-all duration-300 px-4 py-3 rounded-xl text-sm font-medium max-w-[85%] text-center opacity-0 translate-y-2 pointer-events-none">
+    </div>
+
+  </div>
+
+  <!-- Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <script>
+    /* ====================================================================
+       CONFIGURATION — replace with your own Supabase project credentials
+       ==================================================================== */
+    const SUPABASE_URL = 'https://dkonmetjmazgqwyypeek.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_Ycs5xEDGhUDpUmk_EazEXA_wuGT5yWF';
+
+    /*
+      Expected table schema (run this once in the Supabase SQL editor):
+
+      create table workout_logs (
+        id uuid primary key default gen_random_uuid(),
+        exercise_name text not null,
+        weight_kg numeric not null,
+        reps integer not null,
+        set_number integer not null,
+        created_at timestamptz not null default now()
+      );
+    */
+
+    // Exercises grouped by muscle group. "Quick Pick" is the flat, no-navigation
+    // shortlist for anyone who wants to log without drilling into a group.
+    // Exercises can appear in more than one group where that's realistic (e.g.
+    // Deadlift under both Back and Legs).
+    const EXERCISE_GROUPS = {
+      'Quick Pick': ['Bench Press', 'Incline DB Press', 'Squat', 'Deadlift', 'Lat Pulldown'],
+      'Chest': ['Bench Press', 'Incline DB Press', 'Decline Press', 'Cable Fly', 'Dips', 'Push-ups'],
+      'Back': ['Deadlift', 'Lat Pulldown', 'Barbell Row', 'Seated Cable Row', 'Pull-ups', 'T-Bar Row'],
+      'Legs': ['Squat', 'Leg Press', 'Romanian Deadlift', 'Walking Lunges', 'Leg Extension', 'Leg Curl'],
+      'Shoulders': ['Overhead Press', 'Lateral Raise', 'Front Raise', 'Face Pull', 'Arnold Press'],
+      'Biceps': ['Barbell Curl', 'Hammer Curl', 'Preacher Curl', 'Incline DB Curl'],
+      'Triceps': ['Tricep Pushdown', 'Skull Crushers', 'Overhead Tricep Extension', 'Close-Grip Bench Press'],
+      'Abs': ['Plank', 'Hanging Leg Raise', 'Cable Crunch', 'Sit-ups', 'Russian Twist'],
+    };
+    // Exercise names logged via "+ Custom exercise" that aren't in any group above
+    // land here so they stay pickable later, under a "My Exercises" group.
+    let customLoggedExercises = [];
+
+    const TIMER_TOTAL = 90;
+    const RING_CIRCUMFERENCE = 339.3;
+
+    const state = { nextSetNumber: 1, prevMax: 0 };
+    let sb = null;
+    let chartInstance = null;
+    let toastTimeout = null;
+
+    // ---------- Element refs ----------
+    const groupSelect = document.getElementById('muscle-group-select');
+    const exerciseSelect = document.getElementById('exercise-select');
+    const customInput = document.getElementById('custom-exercise-input');
+    const weightInput = document.getElementById('weight-input');
+    const repsInput = document.getElementById('reps-input');
+    const setNumberDisplay = document.getElementById('set-number-display');
+    const prevMaxBadge = document.getElementById('prev-max-badge');
+    const recentSetCard = document.getElementById('recent-set-card');
+    const logSetBtn = document.getElementById('log-set-btn');
+    const analyticsGroupSelect = document.getElementById('analytics-muscle-group-select');
+    const analyticsSelect = document.getElementById('analytics-exercise-select');
+    const historyList = document.getElementById('history-list');
+    const chartEmptyState = document.getElementById('chart-empty-state');
+    const timerDisplay = document.getElementById('timer-display');
+    const timerRing = document.getElementById('timer-ring');
+
+    // ---------- Supabase init ----------
+    function initSupabase() {
+      const dot = document.getElementById('conn-dot');
+      const banner = document.getElementById('config-banner');
+      try {
+        const placeholder = SUPABASE_URL.includes('YOUR_') || SUPABASE_ANON_KEY.includes('YOUR_');
+        if (!placeholder && window.supabase && window.supabase.createClient) {
+          sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        }
+      } catch (e) {
+        console.error('Supabase init failed', e);
+      }
+      if (sb) {
+        dot.classList.remove('bg-faint', 'bg-danger');
+        dot.classList.add('bg-ok');
+        banner.classList.add('hidden');
+      } else {
+        dot.classList.remove('bg-faint', 'bg-ok');
+        dot.classList.add('bg-danger');
+        banner.classList.remove('hidden');
+        logSetBtn.disabled = true;
+      }
+    }
+
+    // ---------- Toast ----------
+    function showToast(message, type) {
+      clearTimeout(toastTimeout);
+      const palette = {
+        info: 'bg-surface2 text-ink border-line',
+        success: 'bg-ok/10 text-ok border-ok/40',
+        error: 'bg-danger/10 text-danger border-danger/40',
+      }[type || 'info'];
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.className = `fixed left-1/2 -translate-x-1/2 bottom-24 z-30 transition-all duration-300 px-4 py-3 rounded-xl text-sm font-medium max-w-[85%] text-center border ${palette} opacity-100 translate-y-0`;
+      toastTimeout = setTimeout(() => {
+        toast.className = 'fixed left-1/2 -translate-x-1/2 bottom-24 z-30 transition-all duration-300 px-4 py-3 rounded-xl text-sm font-medium max-w-[85%] text-center opacity-0 translate-y-2 pointer-events-none';
+      }, 2600);
+    }
+
+    // ---------- Tabs ----------
+    function showTab(tabId) {
+      document.querySelectorAll('.tab-panel').forEach((p) => p.classList.add('hidden'));
+      document.getElementById(tabId).classList.remove('hidden');
+      document.querySelectorAll('.tab-btn').forEach((b) => {
+        const active = b.dataset.tab === tabId;
+        b.classList.toggle('text-brass', active);
+        b.classList.toggle('text-faint', !active);
+      });
+      if (tabId === 'analytics-panel') {
+        loadAnalytics();
+        loadHistory();
+      }
+    }
+    document.querySelectorAll('.tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => showTab(btn.dataset.tab));
+    });
+
+    // ---------- Helpers ----------
+    function formatDateTime(d) {
+      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
+        ' · ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    }
+    function roundTo(n, decimals) {
+      const f = Math.pow(10, decimals);
+      return Math.round(n * f) / f;
+    }
+    function escapeHTML(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+    function getCurrentExercise() {
+      if (groupSelect.value === '__custom__') return customInput.value.trim();
+      return exerciseSelect.value;
+    }
+    function isPredefinedExercise(name) {
+      return Object.values(EXERCISE_GROUPS).some((list) =>
+        list.some((item) => item.toLowerCase() === name.toLowerCase()));
+    }
+    // Fetches every distinct exercise_name already logged and keeps the ones
+    // that aren't part of a predefined group, so past custom entries resurface
+    // under "My Exercises" instead of having to be retyped.
+    async function loadCustomLoggedExercises() {
+      customLoggedExercises = [];
+      if (!sb) return;
+      try {
+        const { data, error } = await sb.from('workout_logs').select('exercise_name');
+        if (!error && data) {
+          const distinct = [...new Set(data.map((r) => r.exercise_name))];
+          customLoggedExercises = distinct.filter((n) => !isPredefinedExercise(n)).sort();
+        }
+      } catch (e) { console.error(e); }
+    }
+    // Builds a "which muscle group" select: predefined groups, then "My
+    // Exercises" if any custom names have been logged, then an optional
+    // "+ Custom exercise" entry for creating new ones (Logger tab only).
+    function buildGroupOptions(selectEl, includeCustomOption) {
+      const previous = selectEl.value;
+      selectEl.innerHTML = '';
+      Object.keys(EXERCISE_GROUPS).forEach((group) => {
+        const opt = document.createElement('option');
+        opt.value = group; opt.textContent = group;
+        selectEl.appendChild(opt);
+      });
+      if (customLoggedExercises.length) {
+        const opt = document.createElement('option');
+        opt.value = 'My Exercises'; opt.textContent = 'My Exercises';
+        selectEl.appendChild(opt);
+      }
+      if (includeCustomOption) {
+        const opt = document.createElement('option');
+        opt.value = '__custom__'; opt.textContent = '+ Custom exercise';
+        selectEl.appendChild(opt);
+      }
+      if ([...selectEl.options].some((o) => o.value === previous)) selectEl.value = previous;
+    }
+    // Fills the exercise select with whichever list belongs to the chosen group.
+    function buildExerciseOptions(selectEl, group) {
+      const list = group === 'My Exercises' ? customLoggedExercises : (EXERCISE_GROUPS[group] || []);
+      const previous = selectEl.value;
+      selectEl.innerHTML = '';
+      list.forEach((name) => {
+        const opt = document.createElement('option');
+        opt.value = name; opt.textContent = name;
+        selectEl.appendChild(opt);
+      });
+      if (list.includes(previous)) selectEl.value = previous;
+    }
+
+    // ---------- Exercise change handling ----------
+    groupSelect.addEventListener('change', () => {
+      if (groupSelect.value === '__custom__') {
+        exerciseSelect.classList.add('hidden');
+        customInput.classList.remove('hidden');
+        customInput.focus();
+      } else {
+        customInput.classList.add('hidden');
+        exerciseSelect.classList.remove('hidden');
+        buildExerciseOptions(exerciseSelect, groupSelect.value);
+      }
+      refreshRecentSet();
+    });
+    exerciseSelect.addEventListener('change', refreshRecentSet);
+    customInput.addEventListener('blur', refreshRecentSet);
+
+    analyticsGroupSelect.addEventListener('change', () => {
+      buildExerciseOptions(analyticsSelect, analyticsGroupSelect.value);
+      loadAnalytics();
+    });
+    analyticsSelect.addEventListener('change', loadAnalytics);
+
+    // ---------- Weight / reps steppers ----------
+    document.querySelectorAll('.adj-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const target = btn.dataset.adj === 'weight' ? weightInput : repsInput;
+        const amt = parseFloat(btn.dataset.amt);
+        const current = parseFloat(target.value) || 0;
+        let next = current + amt;
+        if (next < 0) next = 0;
+        target.value = btn.dataset.adj === 'weight' ? roundTo(next, 2) : Math.round(next);
+      });
+    });
+
+    // ---------- Recent set / next set number / PR badge ----------
+    async function refreshRecentSet() {
+      const exercise = getCurrentExercise();
+      if (!exercise) {
+        recentSetCard.textContent = 'Enter an exercise name.';
+        setNumberDisplay.textContent = '1';
+        state.nextSetNumber = 1;
+        prevMaxBadge.classList.add('hidden');
+        return;
+      }
+      if (!sb) {
+        recentSetCard.textContent = 'Connect Supabase to see previous sets.';
+        setNumberDisplay.textContent = '1';
+        state.nextSetNumber = 1;
+        return;
+      }
+      recentSetCard.textContent = 'Loading…';
+      try {
+        const { data, error } = await sb.from('workout_logs').select('*')
+          .eq('exercise_name', exercise).order('created_at', { ascending: false }).limit(1);
+        if (error) throw error;
+
+        if (data && data.length) {
+          const row = data[0];
+          const d = new Date(row.created_at);
+          const sameDay = d.toDateString() === new Date().toDateString();
+          state.nextSetNumber = sameDay ? row.set_number + 1 : 1;
+          recentSetCard.innerHTML =
+            `<div class="flex items-center justify-between">
+               <span class="text-ink font-display text-lg tabular-nums">${row.weight_kg}kg × ${row.reps}</span>
+               <span class="text-faint text-xs">${formatDateTime(d)}</span>
+             </div>
+             <div class="text-faint text-xs mt-1">Set ${row.set_number}${sameDay ? ' · today' : ''}</div>`;
+          if (sameDay) weightInput.value = row.weight_kg;
+        } else {
+          recentSetCard.textContent = 'No sets logged yet for this exercise.';
+          state.nextSetNumber = 1;
+        }
+        setNumberDisplay.textContent = state.nextSetNumber;
+
+        const { data: maxData } = await sb.from('workout_logs').select('weight_kg')
+          .eq('exercise_name', exercise).order('weight_kg', { ascending: false }).limit(1);
+        if (maxData && maxData.length) {
+          state.prevMax = maxData[0].weight_kg;
+          prevMaxBadge.textContent = `PR ${state.prevMax}kg`;
+          prevMaxBadge.classList.remove('hidden');
+        } else {
+          state.prevMax = 0;
+          prevMaxBadge.classList.add('hidden');
+        }
+      } catch (e) {
+        console.error(e);
+        recentSetCard.textContent = 'Could not load previous set.';
+      }
+    }
+
+    // ---------- Log a set ----------
+    logSetBtn.addEventListener('click', logSet);
+    async function logSet() {
+      const exercise = getCurrentExercise();
+      if (!exercise) { showToast('Enter an exercise name', 'error'); return; }
+      if (!sb) { showToast('Supabase is not connected', 'error'); return; }
+
+      const weight = parseFloat(weightInput.value);
+      const reps = parseInt(repsInput.value, 10);
+      if (isNaN(weight) || weight < 0) { showToast('Enter a valid weight', 'error'); return; }
+      if (isNaN(reps) || reps <= 0) { showToast('Enter a valid rep count', 'error'); return; }
+
+      const setNumber = state.nextSetNumber || 1;
+      logSetBtn.disabled = true;
+      logSetBtn.textContent = 'Logging…';
+      try {
+        const { error } = await sb.from('workout_logs').insert([{
+          exercise_name: exercise, weight_kg: weight, reps: reps, set_number: setNumber,
+        }]);
+        if (error) throw error;
+
+        const isPR = weight > (state.prevMax || 0);
+        showToast(isPR ? `New PR — ${weight}kg 🏆` : 'Set logged', 'success');
+        if (isPR) {
+          state.prevMax = weight;
+          prevMaxBadge.textContent = `PR ${weight}kg`;
+          prevMaxBadge.classList.remove('hidden');
+        }
+        state.nextSetNumber = setNumber + 1;
+        setNumberDisplay.textContent = state.nextSetNumber;
+
+        refreshRecentSet();
+        startTimer();
+      } catch (e) {
+        console.error(e);
+        showToast('Failed to save set', 'error');
+      } finally {
+        logSetBtn.disabled = false;
+        logSetBtn.textContent = 'Log Set';
+      }
+    }
+
+    // ---------- Rest timer ----------
+    const timerState = { remaining: TIMER_TOTAL, intervalId: null, running: false };
+    function updateTimerUI() {
+      const m = Math.floor(timerState.remaining / 60).toString().padStart(2, '0');
+      const s = Math.floor(timerState.remaining % 60).toString().padStart(2, '0');
+      timerDisplay.textContent = `${m}:${s}`;
+      const offset = RING_CIRCUMFERENCE * (1 - timerState.remaining / TIMER_TOTAL);
+      timerRing.style.strokeDashoffset = offset;
+    }
+    function startTimer() {
+      if (timerState.running) return;
+      if (timerState.remaining <= 0) timerState.remaining = TIMER_TOTAL;
+      timerState.running = true;
+      timerState.intervalId = setInterval(() => {
+        timerState.remaining -= 1;
+        if (timerState.remaining <= 0) {
+          timerState.remaining = 0;
+          updateTimerUI();
+          pauseTimer();
+          timerDisplay.classList.add('text-ok');
+          setTimeout(() => timerDisplay.classList.remove('text-ok'), 2000);
+          if (navigator.vibrate) navigator.vibrate(200);
+          showToast('Rest complete', 'info');
+          return;
+        }
+        updateTimerUI();
+      }, 1000);
+      updateTimerUI();
+    }
+    function pauseTimer() {
+      timerState.running = false;
+      clearInterval(timerState.intervalId);
+    }
+    function resetTimer() {
+      pauseTimer();
+      timerState.remaining = TIMER_TOTAL;
+      updateTimerUI();
+    }
+    document.getElementById('timer-start').addEventListener('click', startTimer);
+    document.getElementById('timer-pause').addEventListener('click', pauseTimer);
+    document.getElementById('timer-reset').addEventListener('click', resetTimer);
+
+    // ---------- Analytics chart ----------
+    async function loadAnalytics() {
+      const exercise = analyticsSelect.value;
+      if (!exercise) return;
+      if (!sb) {
+        chartEmptyState.textContent = 'Connect Supabase to see analytics.';
+        chartEmptyState.classList.remove('hidden');
+        renderChart([], []);
+        return;
+      }
+      try {
+        const { data, error } = await sb.from('workout_logs').select('*')
+          .eq('exercise_name', exercise).order('created_at', { ascending: true });
+        if (error) throw error;
+
+        if (!data || !data.length) {
+          chartEmptyState.textContent = 'No data yet';
+          chartEmptyState.classList.remove('hidden');
+          renderChart([], []);
+          return;
+        }
+        chartEmptyState.classList.add('hidden');
+
+        const bySession = new Map();
+        data.forEach((row) => {
+          const key = new Date(row.created_at).toLocaleDateString('en-CA');
+          const current = bySession.get(key) || 0;
+          if (row.weight_kg > current) bySession.set(key, row.weight_kg);
+        });
+        const sortedKeys = [...bySession.keys()].sort();
+        const labels = sortedKeys.map((k) =>
+          new Date(k + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
+        const values = sortedKeys.map((k) => bySession.get(k));
+        renderChart(labels, values);
+      } catch (e) {
+        console.error(e);
+        showToast('Could not load analytics', 'error');
+      }
+    }
+
+    function renderChart(labels, values) {
+      const ctx = document.getElementById('progress-chart');
+      const brass = '#d9a441';
+      if (chartInstance) chartInstance.destroy();
+      chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Max weight (kg)',
+            data: values,
+            borderColor: brass,
+            backgroundColor: 'rgba(217,164,65,0.15)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 4,
+            pointBackgroundColor: brass,
+            pointBorderColor: '#09090b',
+            pointBorderWidth: 2,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: '#8b8b93', font: { family: 'Inter', size: 11 } }, grid: { color: '#1b1b1f' } },
+            y: { ticks: { color: '#8b8b93', font: { family: 'Inter', size: 11 } }, grid: { color: '#1b1b1f' } },
+          },
+        },
+      });
+    }
+
+    // ---------- History ----------
+    document.getElementById('refresh-history-btn').addEventListener('click', async () => {
+      await loadCustomLoggedExercises();
+      buildGroupOptions(groupSelect, true);
+      buildExerciseOptions(exerciseSelect, groupSelect.value);
+      buildGroupOptions(analyticsGroupSelect, false);
+      buildExerciseOptions(analyticsSelect, analyticsGroupSelect.value);
+      loadHistory();
+      loadAnalytics();
+    });
+    async function loadHistory() {
+      if (!sb) {
+        historyList.innerHTML = '<p class="p-4 text-sm text-faint">Connect Supabase to see history.</p>';
+        return;
+      }
+      historyList.innerHTML = '<p class="p-4 text-sm text-faint">Loading…</p>';
+      try {
+        const { data, error } = await sb.from('workout_logs').select('*')
+          .order('created_at', { ascending: false }).limit(200);
+        if (error) throw error;
+
+        if (!data || !data.length) {
+          historyList.innerHTML = '<p class="p-4 text-sm text-faint">No workouts logged yet.</p>';
+          return;
+        }
+        historyList.innerHTML = data.map((row) => {
+          const d = new Date(row.created_at);
+          return `<div class="flex items-center justify-between px-4 py-3">
+                     <div>
+                       <p class="text-sm font-medium text-ink">${escapeHTML(row.exercise_name)}</p>
+                       <p class="text-xs text-faint mt-0.5">Set ${row.set_number} · ${formatDateTime(d)}</p>
+                     </div>
+                     <p class="font-display text-base tabular-nums text-ink">${row.weight_kg}kg × ${row.reps}</p>
+                   </div>`;
+        }).join('');
+      } catch (e) {
+        console.error(e);
+        historyList.innerHTML = '<p class="p-4 text-sm text-danger">Could not load history.</p>';
+      }
+    }
+
+    // ---------- Init ----------
+    document.getElementById('today-date').textContent =
+      new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+
+    initSupabase();
+    (async () => {
+      await loadCustomLoggedExercises();
+      buildGroupOptions(groupSelect, true);
+      buildExerciseOptions(exerciseSelect, groupSelect.value);
+      buildGroupOptions(analyticsGroupSelect, false);
+      buildExerciseOptions(analyticsSelect, analyticsGroupSelect.value);
+      resetTimer();
+      showTab('logger-panel');
+      refreshRecentSet();
+    })();
+  </script>
+</body>
+</html>
